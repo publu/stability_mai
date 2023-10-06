@@ -6,7 +6,7 @@ The Stability MAI Storefront (SMS) is a smart contract system designed to priori
 
 The SMS contract is divided into three main functions:
 
-1. **Stability Pool:** Users can deposit MAI and own a share of the total value locked in the contract. They can later withdraw them after a 2-week waiting period.
+1. **Stability Pool:** Users can deposit MAI and own a share of the total value locked in the contract. They can later withdraw them after an epoch-based waiting period.
 
 2. **Liquidation Functions:** These functions can be called by users or protocol bots to liquidate vaults. The liquidation process is done in batches and is only possible for vaults that have been authorized and added to the contract.
 

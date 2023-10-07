@@ -109,7 +109,11 @@ contract WrappedERC20 is ERC20 {
     function withdraw() public {
         uint256 amount = withdrawalAmount[msg.sender];
         require(balanceOf(msg.sender) >= amount, "Insufficient balance");
+        /*
+            Unsure if this is good practice
+        */
         require(underlying.balanceOf(address(this)) >= amount, "Insufficient contract balance");
+        require(canWithdraw(msg.sender), "Withdrawal not allowed yet");
 
         _burn(msg.sender, amount);
         require(underlying.transfer(msg.sender, amount), "Transfer failed");
@@ -117,5 +121,3 @@ contract WrappedERC20 is ERC20 {
         totalUnderlying -= amount;
     }
 }
-
-

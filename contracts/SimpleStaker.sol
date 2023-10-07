@@ -51,13 +51,13 @@ contract WrappedERC20 is ERC20 {
     }
 
     /**
-     * @dev This function gets called by the liquidation contract
-     * The liquidation contract takes MAI from SimpleStaker and uses it to liquidate vaults, then that contract sells the collateral.
-     * After that, it sends the MAI back to SimpleStaker, using this function
-     * @param amount The amount of MAI to earn
+     * @dev This function is invoked by the liquidation contract.
+     * The liquidation contract borrows MAI from SimpleStaker to liquidate vaults and subsequently sells the collateral.
+     * Post liquidation, the MAI is returned to SimpleStaker via this function.
+     * @param amount The quantity of MAI to be returned.
      */
     function earnToken(uint256 amount) external {
-        underlying.transferFrom(msg.sender, address(this), amount);
+        underlying.transferFrom(msg.sender, address(this), underlying.balanceOf(msg.sender));
         totalUnderlying += amount;
     }
 
@@ -67,20 +67,30 @@ contract WrappedERC20 is ERC20 {
      * @return true if the user can withdraw their MAI, false otherwise
      */
     function canWithdraw(address user) public view returns (bool) {
+        // Calculate the current epoch based on the current block timestamp and epoch length
         uint256 currentEpoch = block.timestamp / epochLength;
+        // Calculate the time into the current epoch
         uint256 timeIntoEpoch = block.timestamp % epochLength;
+        // Check if the time into the current epoch is within the withdrawal window
         if (timeIntoEpoch <= withdrawalWindow) {
+            // Get the total balance of the underlying asset in the contract
             uint256 totalBalance = underlying.balanceOf(address(this));
+            // Check if the total balance is greater than or equal to the low liquidity threshold plus the withdrawal amount of the user
             if (totalBalance >= lowLiquidityThreshold + withdrawalAmount[user]) {
+                // If so, the user can withdraw
                 return true;
             }
+            // If not, check if the total balance is greater than or equal to the mid liquidity threshold plus the withdrawal amount of the user
             else if (totalBalance >= midLiquidityThreshold + withdrawalAmount[user]) {
+                // If so, the user can withdraw if the current epoch is greater than the withdrawal request epoch of the user plus 1
                 return currentEpoch > withdrawalRequestEpoch[user] + 1;
             }
+            // If not, the user can withdraw if the current epoch is greater than the withdrawal request epoch of the user plus 2
             else {
                 return currentEpoch > withdrawalRequestEpoch[user] + 2;
             }
         }
+        // If the time into the current epoch is not within the withdrawal window, the user cannot withdraw
         return false;
     }
 

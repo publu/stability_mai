@@ -24,6 +24,7 @@ contract WrappedERC20 is ERC20 {
 
     mapping(address => uint256) public withdrawalRequestEpoch;
     mapping(address => uint256) public withdrawalAmount;
+    mapping(address => uint256) public withdrawalEpoch;
 
     /**
      * @dev The constructor sets the underlying asset and liquidity thresholds
@@ -42,12 +43,19 @@ contract WrappedERC20 is ERC20 {
      * @param amount The amount of MAI to deposit
      */
     function deposit(uint256 amount) public {
-        require(underlying.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+        if (!underlying.transferFrom(msg.sender, address(this), amount)) {
+            revert TransferFailed();
+        }
 
+        // Remove any existing withdrawal requests when user deposits
+        withdrawalRequestEpoch[msg.sender] = 0;
+        withdrawalAmount[msg.sender] = 0;
+        
         uint256 totalShares = totalSupply();
         uint256 what = (amount * totalShares) / totalUnderlying;
         _mint(msg.sender, what);
         totalUnderlying += amount;
+        emit Deposit(msg.sender, amount);
     }
 
     /**
@@ -59,6 +67,7 @@ contract WrappedERC20 is ERC20 {
     function earnToken(uint256 amount) external {
         underlying.transferFrom(msg.sender, address(this), underlying.balanceOf(msg.sender));
         totalUnderlying += amount;
+        emit EarnToken(msg.sender, amount);
     }
 
     /**
@@ -69,29 +78,8 @@ contract WrappedERC20 is ERC20 {
     function canWithdraw(address user) public view returns (bool) {
         // Calculate the current epoch based on the current block timestamp and epoch length
         uint256 currentEpoch = block.timestamp / epochLength;
-        // Calculate the time into the current epoch
-        uint256 timeIntoEpoch = block.timestamp % epochLength;
-        // Check if the time into the current epoch is within the withdrawal window
-        if (timeIntoEpoch <= withdrawalWindow) {
-            // Get the total balance of the underlying asset in the contract
-            uint256 totalBalance = underlying.balanceOf(address(this));
-            // Check if the total balance is greater than or equal to the low liquidity threshold plus the withdrawal amount of the user
-            if (totalBalance >= lowLiquidityThreshold + withdrawalAmount[user]) {
-                // If so, the user can withdraw
-                return true;
-            }
-            // If not, check if the total balance is greater than or equal to the mid liquidity threshold plus the withdrawal amount of the user
-            else if (totalBalance >= midLiquidityThreshold + withdrawalAmount[user]) {
-                // If so, the user can withdraw if the current epoch is greater than the withdrawal request epoch of the user plus 1
-                return currentEpoch > withdrawalRequestEpoch[user] + 1;
-            }
-            // If not, the user can withdraw if the current epoch is greater than the withdrawal request epoch of the user plus 2
-            else {
-                return currentEpoch > withdrawalRequestEpoch[user] + 2;
-            }
-        }
-        // If the time into the current epoch is not within the withdrawal window, the user cannot withdraw
-        return false;
+        // Check if the current epoch is greater than or equal to the withdrawal epoch of the user
+        return currentEpoch >= withdrawalEpoch[user];
     }
 
     /**
@@ -101,23 +89,56 @@ contract WrappedERC20 is ERC20 {
     function requestWithdrawal(uint256 amount) public {
         withdrawalRequestEpoch[msg.sender] = block.timestamp / epochLength;
         withdrawalAmount[msg.sender] = amount;
+        uint256 totalBalance = underlying.balanceOf(address(this));
+        if (totalBalance >= lowLiquidityThreshold + amount) {
+            withdrawalEpoch[msg.sender] = withdrawalRequestEpoch[msg.sender] + 1;
+        } else if (totalBalance >= midLiquidityThreshold + amount) {
+            withdrawalEpoch[msg.sender] = withdrawalRequestEpoch[msg.sender] + 2;
+        } else {
+            withdrawalEpoch[msg.sender] = withdrawalRequestEpoch[msg.sender] + 3;
+        }
+        emit WithdrawalRequest(msg.sender, amount);
     }
 
     /**
      * @dev Allows users to withdraw their MAI if the conditions are met
+     * The withdrawal amount must be the amount the user put in their request. Nothing more.
      */
     function withdraw() public {
         uint256 amount = withdrawalAmount[msg.sender];
-        require(balanceOf(msg.sender) >= amount, "Insufficient balance");
-        /*
-            Unsure if this is good practice
-        */
-        require(underlying.balanceOf(address(this)) >= amount, "Insufficient contract balance");
-        require(canWithdraw(msg.sender), "Withdrawal not allowed yet");
+        if (amount == 0) {
+            revert NoWithdrawalRequested();
+        }
+        if (balanceOf(msg.sender) < amount) {
+            revert InsufficientUserBalance(balanceOf(msg.sender), amount);
+        }
+        if (underlying.balanceOf(address(this)) < amount) {
+            revert InsufficientContractBalance(underlying.balanceOf(address(this)), amount);
+        }
+        if (!canWithdraw(msg.sender)) {
+            revert WithdrawalNotAllowedYet();
+        }
 
         _burn(msg.sender, amount);
-        require(underlying.transfer(msg.sender, amount), "Transfer failed");
         withdrawalAmount[msg.sender] = 0;
         totalUnderlying -= amount;
+        if (!underlying.transfer(msg.sender, amount)) {
+            revert TransferToUserFailed();
+        }
+        emit Withdraw(msg.sender, amount);
     }
+
+    // Error functions
+    error TransferFailed();
+    error NoWithdrawalRequested();
+    error InsufficientUserBalance(uint balance, uint withdrawAmount);
+    error InsufficientContractBalance(uint balance, uint withdrawAmount);
+    error WithdrawalNotAllowedYet();
+    error TransferToUserFailed();
+
+    // Event functions
+    event Deposit(address indexed user, uint256 amount);
+    event EarnToken(address indexed user, uint256 amount);
+    event WithdrawalRequest(address indexed user, uint256 amount);
+    event Withdraw(address indexed user, uint256 amount);
 }

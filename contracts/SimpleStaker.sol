@@ -64,10 +64,11 @@ contract WrappedERC20 is ERC20 {
      * Post liquidation, the MAI is returned to SimpleStaker via this function.
      * @param amount The quantity of MAI to be returned.
      */
-    function earnToken(uint256 amount) external {
-        underlying.transferFrom(msg.sender, address(this), underlying.balanceOf(msg.sender));
-        totalUnderlying += amount;
-        emit EarnToken(msg.sender, amount);
+    function donateAll() external {
+        uint256 balance = underlying.balanceOf(msg.sender);
+        underlying.transferFrom(msg.sender, address(this), balance);
+        totalUnderlying += balance;
+        emit EarnToken(msg.sender, balance);
     }
 
     /**
@@ -109,17 +110,18 @@ contract WrappedERC20 is ERC20 {
         if (amount == 0) {
             revert NoWithdrawalRequested();
         }
-        if (balanceOf(msg.sender) < amount) {
-            revert InsufficientUserBalance(balanceOf(msg.sender), amount);
+        uint256 userShare = (amount * totalSupply()) / totalUnderlying;
+        if (balanceOf(msg.sender) < userShare) {
+            revert InsufficientUserBalance(balanceOf(msg.sender), userShare);
         }
-        if (underlying.balanceOf(address(this)) < amount) {
-            revert InsufficientContractBalance(underlying.balanceOf(address(this)), amount);
+        if (underlying.balanceOf(address(this)) < userShare) {
+            revert InsufficientContractBalance(underlying.balanceOf(address(this)), userShare);
         }
         if (!canWithdraw(msg.sender)) {
             revert WithdrawalNotAllowedYet();
         }
 
-        _burn(msg.sender, amount);
+        _burn(msg.sender, userShare);
         withdrawalAmount[msg.sender] = 0;
         totalUnderlying -= amount;
         if (!underlying.transfer(msg.sender, amount)) {

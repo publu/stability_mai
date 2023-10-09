@@ -12,6 +12,7 @@ interface IStableQiVault {
   function checkExtract ( uint256 vaultID ) external view returns ( uint256 );
   function collateral() external view returns ( address );
   function decimalDifferenceRaisedToTen() external view returns ( uint256 );
+  function paybackTokenAll(uint256 vaultID, uint256 deadline, uint256 _front) external;
 
   function ethPriceSource() external view returns ( address );
   function getTokenPriceSource() external view returns ( uint256 );

@@ -72,15 +72,17 @@ contract WrappedERC20 is ERC20 {
     }
 
     /**
-     * @dev Checks if a user can withdraw their MAI
+     * @dev Determines whether a user is eligible to withdraw their MAI
      * @param user The address of the user
-     * @return true if the user can withdraw their MAI, false otherwise
+     * @return A boolean indicating if the user can withdraw their MAI
      */
     function canWithdraw(address user) public view returns (bool) {
-        // Calculate the current epoch based on the current block timestamp and epoch length
+        // Compute the current epoch based on the current block timestamp and epoch length
         uint256 currentEpoch = block.timestamp / epochLength;
-        // Check if the current epoch is greater than or equal to the withdrawal epoch of the user
-        return currentEpoch >= withdrawalEpoch[user];
+        // Compute the termination of the withdrawal window
+        uint256 endOfWithdrawalWindow = withdrawalEpoch[user] + (withdrawalWindow / epochLength);
+        // Verify if the current epoch falls within the user's withdrawal window
+        return currentEpoch >= withdrawalEpoch[user] && currentEpoch < endOfWithdrawalWindow;
     }
 
     /**

@@ -1,3 +1,13 @@
+```
+  _____      _                     _        __         _                   
+ |_   _|    (_)                   (_)      |  ]       / |_                 
+   | |      __   .--. _  __   _   __   .--.| |  ,--. `| |-' .--.   _ .--.  
+   | |   _ [  |/ /'`\' ][  | | | [  |/ /'`\' | `'_\ : | | / .'`\ \[ `/'`\] 
+  _| |__/ | | || \__/ |  | \_/ |, | || \__/  | // | |,| |,| \__. | | |     
+ |________|[___]\__.; |  '.__.'_/[___]'.__.;__]\'-;__/\__/ '.__.' [___]    
+                    |__]                                                   
+```
+
 # Stability MAI Storefront (SMS)
 
 The Stability MAI Storefront (SMS) is a smart contract system designed to prioritize the liquidation of any vaults that have MAI loans. Users can stake their MAI tokens in the contract, which then gets priority in the liquidation process.

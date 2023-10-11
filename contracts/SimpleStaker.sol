@@ -16,7 +16,9 @@ contract WrappedERC20 is ERC20 {
     uint256 public midLiquidityThreshold;
 
     /**
-     * @dev This state variable keeps track of the total underlying asset
+     * @dev This state variable keeps track of the total underlying asset deposited
+     * It's mainly here to protect deposits from new depositors so they don't earn 
+     * what previous users have risked
      */
     uint256 public totalUnderlying;
 
@@ -46,7 +48,7 @@ contract WrappedERC20 is ERC20 {
         if (!underlying.transferFrom(msg.sender, address(this), amount)) {
             revert TransferFailed();
         }
-
+    
         // Remove any existing withdrawal requests when user deposits
         withdrawalRequestEpoch[msg.sender] = 0;
         withdrawalAmount[msg.sender] = 0;
@@ -66,9 +68,13 @@ contract WrappedERC20 is ERC20 {
      */
     function donateAll() external {
         uint256 balance = underlying.balanceOf(msg.sender);
-        underlying.transferFrom(msg.sender, address(this), balance);
-        totalUnderlying += balance;
-        emit EarnToken(msg.sender, balance);
+        if (balance > 0) {
+            underlying.transferFrom(msg.sender, address(this), balance);
+            // this makes sense in a Profit w/o Loss scenario.
+            // we need to account for losses
+            totalUnderlying += balance;
+            emit EarnToken(msg.sender, balance);
+        }
     }
 
     /**
@@ -90,6 +96,9 @@ contract WrappedERC20 is ERC20 {
      * @param amount The amount of MAI to withdraw
      */
     function requestWithdrawal(uint256 amount) public {
+        require(amount > 0, "Withdrawal amount cannot be zero");
+        uint256 userBalance = underlying.balanceOf(msg.sender);
+        require(amount <= userBalance, "Withdrawal amount cannot exceed user balance");
         withdrawalRequestEpoch[msg.sender] = block.timestamp / epochLength;
         withdrawalAmount[msg.sender] = amount;
         uint256 totalBalance = underlying.balanceOf(address(this));
@@ -106,15 +115,20 @@ contract WrappedERC20 is ERC20 {
     /**
      * @dev Allows users to withdraw their MAI if the conditions are met
      * The withdrawal amount must be the amount the user put in their request. Nothing more.
+     * @param minAmount The minimum amount the user expects to receive
      */
-    function withdraw() public {
+    function withdraw(uint256 minAmount) public {
         uint256 amount = withdrawalAmount[msg.sender];
+        uint256 userBalance = underlying.balanceOf(msg.sender);
+        require(amount <= userBalance, "Withdrawal amount cannot exceed user balance");
+
         if (amount == 0) {
             revert NoWithdrawalRequested();
         }
-        uint256 userShare = (amount * totalSupply()) / totalUnderlying;
-        if (balanceOf(msg.sender) < userShare) {
-            revert InsufficientUserBalance(balanceOf(msg.sender), userShare);
+        
+        uint256 userShare = (underlying.balanceOf(address(this)) * amount) / totalSupply();
+        if (userShare < minAmount) {
+            revert InsufficientUserBalance(userShare, minAmount);
         }
         if (underlying.balanceOf(address(this)) < userShare) {
             revert InsufficientContractBalance(underlying.balanceOf(address(this)), userShare);
@@ -122,14 +136,15 @@ contract WrappedERC20 is ERC20 {
         if (!canWithdraw(msg.sender)) {
             revert WithdrawalNotAllowedYet();
         }
-
-        _burn(msg.sender, userShare);
+        // burn the amount which is the wrappedToken held
+        _burn(msg.sender, amount);
         withdrawalAmount[msg.sender] = 0;
-        totalUnderlying -= amount;
-        if (!underlying.transfer(msg.sender, amount)) {
+        // user is removing underlying which needs accounting
+        totalUnderlying -= userShare;
+        if (!underlying.transfer(msg.sender, userShare)) {
             revert TransferToUserFailed();
         }
-        emit Withdraw(msg.sender, amount);
+        emit Withdraw(msg.sender, userShare);
     }
 
     // Error functions
